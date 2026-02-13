@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Gallery",
+    "slug": "gallery",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.gallery",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Приложению нужен доступ к фото для отображения галереи",
+        "NSPhotoLibraryAddUsageDescription": "Приложению нужен доступ для сохранения фото"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.yourcompany.gallery",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Приложению нужен доступ к фото для отображения галереи",
+          "savePhotosPermission": "Приложению нужен доступ для сохранения фото",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-file-system",
+        {
+          "fileSystem": {
+            "readPermission": "Приложению нужен доступ для чтения файлов",
+            "writePermission": "Приложению нужен доступ для записи файлов"
+          }
+        }
+      ]
+    ]
+  }
+}
