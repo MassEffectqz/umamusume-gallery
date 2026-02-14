@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Platform,
+  GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { ImageCardProps } from '../types/index';
@@ -20,141 +21,160 @@ import {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const ImageCard = memo<ImageCardProps & { theme: any }>(({
-  image,
-  index,
-  viewMode,
-  isFavorite,
-  videoThumbnail,
-  columns = 4,
-  onOpen,
-  onToggleFavorite,
-  onDownload,
-  onShare,
-  theme,
-}) => {
-  const [imageLoading, setImageLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
+export const ImageCard = memo<ImageCardProps & { theme: any }>(
+  ({
+    image,
+    index,
+    viewMode,
+    isFavorite,
+    videoThumbnail,
+    columns = 4,
+    onOpen,
+    onToggleFavorite,
+    onDownload,
+    onShare,
+    theme,
+  }) => {
+    const [imageLoading, setImageLoading] = useState(true);
+    const [imageError, setImageError] = useState(false);
 
-  const handlePress = useCallback(() => {
-    onOpen(index);
-  }, [index, onOpen]);
+    const handlePress = useCallback(() => onOpen(index), [index, onOpen]);
 
-  const handleFavoritePress = useCallback((e: any) => {
-    e.stopPropagation();
-    onToggleFavorite(image.name);
-  }, [image.name, onToggleFavorite]);
+    const handleFavoritePress = useCallback(
+      (e: GestureResponderEvent) => {
+        e.stopPropagation();
+        onToggleFavorite(image.name);
+      },
+      [image.name, onToggleFavorite],
+    );
 
-  const handleDownloadPress = useCallback((e: any) => {
-    e.stopPropagation();
-    onDownload(image.uri, image.name);
-  }, [image.uri, image.name, onDownload]);
+    const handleDownloadPress = useCallback(
+      (e: GestureResponderEvent) => {
+        e.stopPropagation();
+        onDownload(image.uri, image.name);
+      },
+      [image.uri, image.name, onDownload],
+    );
 
-  const handleSharePress = useCallback((e: any) => {
-    e.stopPropagation();
-    onShare(image.uri, image.name);
-  }, [image.uri, image.name, onShare]);
+    const handleSharePress = useCallback(
+      (e: GestureResponderEvent) => {
+        e.stopPropagation();
+        onShare(image.uri, image.name);
+      },
+      [image.uri, image.name, onShare],
+    );
 
-  const getCardWidth = () => {
-    if (viewMode === 'grid') {
+    const cardWidth = useMemo(() => {
+      if (viewMode !== 'grid') return SCREEN_WIDTH - 32;
       const padding = 32;
       const gap = 8 * (columns - 1);
       return (SCREEN_WIDTH - padding - gap) / columns;
-    }
-    return SCREEN_WIDTH - 32;
-  };
+    }, [viewMode, columns]);
 
-  const cardWidth = getCardWidth();
-  const cardHeight = viewMode === 'grid' ? cardWidth : 100;
+    const cardHeight = viewMode === 'grid' ? cardWidth * 1.33 : 100;
 
-  return (
-    <TouchableOpacity
-      style={[
-        styles.card,
-        viewMode === 'list' && styles.cardList,
-        { width: cardWidth, backgroundColor: theme.cardBackground },
-      ]}
-      activeOpacity={0.9}
-      onPress={handlePress}
-    >
-      <View style={[styles.imageContainer, { height: cardHeight }]}>
-        {imageLoading && (
-          <View style={[styles.loadingOverlay, { backgroundColor: theme.overlay }]}>
-            <ActivityIndicator size="small" color={theme.accent} />
-          </View>
-        )}
+    return (
+      <TouchableOpacity
+        style={[
+          styles.card,
+          viewMode === 'list' && styles.cardList,
+          { width: cardWidth, backgroundColor: theme.cardBackground },
+        ]}
+        activeOpacity={0.88}
+        onPress={handlePress}
+      >
+        <View style={[styles.imageContainer, { height: cardHeight }]}>
+          {imageLoading && (
+            <View style={[styles.loadingOverlay, { backgroundColor: theme.overlay }]}>
+              <ActivityIndicator size="small" color={theme.accent} />
+            </View>
+          )}
 
-        {imageError ? (
-          <View style={[styles.placeholder, { backgroundColor: theme.overlay }]}>
-            <SearchIcon color={theme.textSecondary} />
-            <Text style={[styles.errorText, { color: theme.textSecondary }]}>Ошибка</Text>
-          </View>
-        ) : (
-          <Image
-            source={{ uri: image.thumb || videoThumbnail || image.uri }}
-            style={styles.image}
-            contentFit="cover"
-            transition={200}
-            onLoadStart={() => setImageLoading(true)}
-            onLoad={() => setImageLoading(false)}
-            onError={() => {
-              setImageLoading(false);
-              setImageError(true);
-            }}
-            cachePolicy="memory-disk"
-            priority="normal"
-            recyclingKey={image.name}
-          />
-        )}
-
-        {image.isVideo && (
-          <View style={[styles.videoBadge, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-            <PlayIcon color="white" />
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={[
-            styles.favoriteBtn,
-            { backgroundColor: isFavorite ? theme.accent : 'rgba(255,255,255,0.95)' },
-          ]}
-          onPress={handleFavoritePress}
-        >
-          <HeartIcon filled={isFavorite} color={isFavorite ? 'white' : theme.text} />
-        </TouchableOpacity>
-
-        {viewMode === 'list' && (
-          <View style={styles.cardInfo}>
-            <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>
-              {image.name}
-            </Text>
-            {image.size && (
-              <Text style={[styles.cardSize, { color: theme.textSecondary }]}>
-                {(image.size / 1024 / 1024).toFixed(2)} MB
+          {imageError ? (
+            <View style={[styles.placeholder, { backgroundColor: theme.surface }]}>
+              <SearchIcon color={theme.textSecondary} size={32} />
+              <Text style={[styles.errorText, { color: theme.textSecondary }]}>
+                Не удалось загрузить
               </Text>
-            )}
-          </View>
-        )}
+            </View>
+          ) : (
+            <Image
+              source={{ uri: image.thumb || videoThumbnail || image.uri }}
+              style={styles.image}
+              contentFit="cover"
+              transition={250}
+              cachePolicy="memory-disk"
+              priority="low"
+              recyclingKey={image.name}
+              onLoadStart={() => setImageLoading(true)}
+              onLoad={() => setImageLoading(false)}
+              onError={() => {
+                setImageLoading(false);
+                setImageError(true);
+              }}
+            />
+          )}
 
-        <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <TouchableOpacity style={styles.overlayBtn} onPress={handleDownloadPress}>
-            <DownloadIcon color="white" />
+          {image.isVideo && (
+            <View style={[styles.videoBadge, { backgroundColor: 'rgba(0,0,0,0.65)' }]}>
+              <PlayIcon color="white" size={20} />
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[
+              styles.favoriteBtn,
+              {
+                backgroundColor: isFavorite ? theme.accent : 'rgba(255,255,255,0.92)',
+              },
+            ]}
+            onPress={handleFavoritePress}
+          >
+            <HeartIcon filled={isFavorite} color={isFavorite ? 'white' : theme.text} size={22} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.overlayBtn} onPress={handleSharePress}>
-            <ShareIcon color="white" />
-          </TouchableOpacity>
+
+          {viewMode === 'list' && (
+            <View style={styles.cardInfo}>
+              <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>
+                {image.name}
+              </Text>
+              {image.size && (
+                <Text style={[styles.cardSize, { color: theme.textSecondary }]}>
+                  {(image.size / 1024 / 1024).toFixed(1)} MB
+                </Text>
+              )}
+            </View>
+          )}
+
+          <View style={styles.overlay}>
+            <TouchableOpacity style={styles.overlayBtn} onPress={handleDownloadPress}>
+              <DownloadIcon color="white" size={22} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.overlayBtn} onPress={handleSharePress}>
+              <ShareIcon color="white" size={22} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
-}, (prevProps, nextProps) => {
-  return (
-    prevProps.image.name === nextProps.image.name &&
-    prevProps.isFavorite === nextProps.isFavorite &&
-    prevProps.viewMode === nextProps.viewMode &&
-    prevProps.columns === nextProps.columns
-  );
-});
+      </TouchableOpacity>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.image.name === next.image.name &&
+      prev.image.thumb === next.image.thumb &&
+      prev.image.uri === next.image.uri &&
+      prev.videoThumbnail === next.videoThumbnail &&
+      prev.isFavorite === next.isFavorite &&
+      prev.viewMode === next.viewMode &&
+      prev.columns === next.columns &&
+      prev.theme === next.theme &&
+      prev.onOpen === next.onOpen &&
+      prev.onToggleFavorite === next.onToggleFavorite &&
+      prev.onDownload === next.onDownload &&
+      prev.onShare === next.onShare
+    );
+  },
+);
 
 ImageCard.displayName = 'ImageCard';
 
@@ -233,13 +253,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     padding: 12,
-    opacity: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   overlayBtn: {
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,

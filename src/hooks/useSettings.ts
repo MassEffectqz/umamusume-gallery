@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { storage } from '../utils/storage';
 
 export type Theme = 'light' | 'dark';
 export type ViewMode = 'grid' | 'list';
@@ -10,14 +9,20 @@ interface Settings {
   viewMode: ViewMode;
   sortOrder: SortOrder;
   uiVisible: boolean;
+  columns: number;
+  sortType: string;
+  filterType: string;
 }
 
-export const useSettings = () => {
+const useSettings = () => {
   const [settings, setSettings] = useState<Settings>({
     theme: 'dark',
     viewMode: 'grid',
     sortOrder: 'name',
     uiVisible: true,
+    columns: 4,
+    sortType: 'default',
+    filterType: 'all',
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -28,18 +33,19 @@ export const useSettings = () => {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      const [theme, viewMode, sortOrder, uiVisible] = await Promise.all([
-        storage.loadTheme(),
-        storage.loadViewMode(),
-        storage.loadSortOrder(),
-        storage.loadUIVisible(),
-      ]);
-      setSettings({
-        theme,
-        viewMode: viewMode as ViewMode,
-        sortOrder: sortOrder as SortOrder,
-        uiVisible,
-      });
+      const data = localStorage.getItem('appSettings');
+      if (data) {
+        const parsed = JSON.parse(data);
+        setSettings({
+          theme: parsed.theme || 'dark',
+          viewMode: parsed.viewMode || 'grid',
+          sortOrder: parsed.sortOrder || 'name',
+          uiVisible: parsed.uiVisible !== false,
+          columns: parsed.columns || 4,
+          sortType: parsed.sortType || 'default',
+          filterType: parsed.filterType || 'all',
+        });
+      }
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -47,25 +53,39 @@ export const useSettings = () => {
     }
   };
 
+  const saveSettings = useCallback(async (newSettings: Partial<Settings>) => {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    localStorage.setItem('appSettings', JSON.stringify(updated));
+  }, [settings]);
+
   const setTheme = useCallback(async (theme: Theme) => {
-    setSettings(prev => ({ ...prev, theme }));
-    await storage.saveTheme(theme);
-  }, []);
+    saveSettings({ theme });
+  }, [saveSettings]);
 
   const setViewMode = useCallback(async (viewMode: ViewMode) => {
-    setSettings(prev => ({ ...prev, viewMode }));
-    await storage.saveViewMode(viewMode);
-  }, []);
+    saveSettings({ viewMode });
+  }, [saveSettings]);
 
   const setSortOrder = useCallback(async (sortOrder: SortOrder) => {
-    setSettings(prev => ({ ...prev, sortOrder }));
-    await storage.saveSortOrder(sortOrder);
-  }, []);
+    saveSettings({ sortOrder });
+  }, [saveSettings]);
 
   const setUIVisible = useCallback(async (uiVisible: boolean) => {
-    setSettings(prev => ({ ...prev, uiVisible }));
-    await storage.saveUIVisible(uiVisible);
-  }, []);
+    saveSettings({ uiVisible });
+  }, [saveSettings]);
+
+  const setColumns = useCallback(async (columns: number) => {
+    saveSettings({ columns });
+  }, [saveSettings]);
+
+  const setSortType = useCallback(async (sortType: string) => {
+    saveSettings({ sortType });
+  }, [saveSettings]);
+
+  const setFilterType = useCallback(async (filterType: string) => {
+    saveSettings({ filterType });
+  }, [saveSettings]);
 
   const resetSettings = useCallback(async () => {
     const defaultSettings: Settings = {
@@ -73,9 +93,12 @@ export const useSettings = () => {
       viewMode: 'grid',
       sortOrder: 'name',
       uiVisible: true,
+      columns: 4,
+      sortType: 'default',
+      filterType: 'all',
     };
     setSettings(defaultSettings);
-    await storage.clearAll();
+    localStorage.removeItem('appSettings');
   }, []);
 
   return {
@@ -84,7 +107,12 @@ export const useSettings = () => {
     setViewMode,
     setSortOrder,
     setUIVisible,
+    setColumns,
+    setSortType,
+    setFilterType,
     resetSettings,
     isLoading,
   };
 };
+
+export default useSettings;

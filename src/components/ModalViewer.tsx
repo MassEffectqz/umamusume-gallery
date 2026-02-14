@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback, useEffect } from 'react';
+import React, { memo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -10,20 +10,13 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Platform,
+  StatusBar,
+  ViewStyle,
+  TextStyle,
+  ImageStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
-import {
-  Gesture,
-  GestureDetector,
-} from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-  clamp,
-  cancelAnimation,
-} from 'react-native-reanimated';
+import ImageViewer from 'react-native-image-zoom-viewer';
 import { ImageItem } from '../types/index';
 import {
   CloseIcon,
@@ -32,15 +25,11 @@ import {
   HeartIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  FullscreenIcon,
+  InfoIcon,
 } from './Icons';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-const MIN_SCALE = 1;
-const MAX_SCALE = 4;
-const DOUBLE_TAP_SCALE = 2.5;
-const IMAGE_HEIGHT = SCREEN_HEIGHT * 0.7;
-const ANIMATION_CONFIG = { duration: 150 };
 
 interface ModalViewerProps {
   visible: boolean;
@@ -73,56 +62,27 @@ export const ModalViewer = memo<ModalViewerProps>(({
 }) => {
   const [loading, setLoading] = useState(true);
   const [uiVisible, setUiVisible] = useState(true);
-  const currentImage = images[currentIndex];
-  
-  const scale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const startScale = useSharedValue(1);
-  const startX = useSharedValue(0);
-  const startY = useSharedValue(0);
+  const [showInfo, setShowInfo] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(currentIndex);
+  const currentImage = images[currentImageIndex];
 
-  const toggleUI = useCallback(() => {
-    setUiVisible(prev => !prev);
-  }, []);
-
-  const getBounds = useCallback(() => {
-    'worklet';
-    const scaledWidth = SCREEN_WIDTH * scale.value;
-    const scaledHeight = IMAGE_HEIGHT * scale.value;
-    const maxX = Math.max(0, (scaledWidth - SCREEN_WIDTH) / 2);
-    const maxY = Math.max(0, (scaledHeight - IMAGE_HEIGHT) / 2);
-    return { maxX, maxY };
-  }, []);
-
-  const applyBounds = useCallback(() => {
-    'worklet';
-    const { maxX, maxY } = getBounds();
-    translateX.value = clamp(translateX.value, -maxX, maxX);
-    translateY.value = clamp(translateY.value, -maxY, maxY);
-  }, []);
+  useEffect(() => {
+    setCurrentImageIndex(currentIndex);
+  }, [currentIndex]);
 
   useEffect(() => {
     if (visible) {
-      setLoading(true);
       setUiVisible(true);
-      cancelAnimation(scale);
-      cancelAnimation(translateX);
-      cancelAnimation(translateY);
-      scale.value = MIN_SCALE;
-      translateX.value = 0;
-      translateY.value = 0;
-      startScale.value = MIN_SCALE;
-      startX.value = 0;
-      startY.value = 0;
+      setShowInfo(false);
     }
-  }, [currentIndex, visible]);
+  }, [currentImageIndex, visible]);
 
   useEffect(() => {
-    if (images.length - currentIndex <= 50) {
+    if (images.length - currentImageIndex <= 50) {
       onLoadMore();
     }
-  }, [currentIndex, images.length, onLoadMore]);
+  }, [currentImageIndex, images.length, onLoadMore]);
 
   const handleDownload = useCallback(() => {
     if (currentImage) {
@@ -142,157 +102,173 @@ export const ModalViewer = memo<ModalViewerProps>(({
     }
   }, [currentImage, onToggleFavorite]);
 
-  const pinchGesture = Gesture.Pinch()
-    .onBegin(() => {
-      cancelAnimation(scale);
-      cancelAnimation(translateX);
-      cancelAnimation(translateY);
-      startScale.value = scale.value;
-      startX.value = translateX.value;
-      startY.value = translateY.value;
-    })
-    .onUpdate((event) => {
-      scale.value = clamp(startScale.value * event.scale, MIN_SCALE, MAX_SCALE);
-      
-      const focusX = event.focalX - SCREEN_WIDTH / 2;
-      const focusY = event.focalY - IMAGE_HEIGHT / 2;
-      
-      translateX.value = startX.value + focusX * (scale.value - startScale.value);
-      translateY.value = startY.value + focusY * (scale.value - startScale.value);
-      
-      applyBounds();
-    })
-    .onEnd(() => {
-      if (scale.value <= MIN_SCALE) {
-        scale.value = withTiming(MIN_SCALE, ANIMATION_CONFIG);
-        translateX.value = withTiming(0, ANIMATION_CONFIG);
-        translateY.value = withTiming(0, ANIMATION_CONFIG);
-      } else {
-        const { maxX, maxY } = getBounds();
-        translateX.value = withTiming(clamp(translateX.value, -maxX, maxX), ANIMATION_CONFIG);
-        translateY.value = withTiming(clamp(translateY.value, -maxY, maxY), ANIMATION_CONFIG);
-      }
-    });
-
-  const panGesture = Gesture.Pan()
-    .maxPointers(1)
-    .minDistance(0)
-    .onBegin(() => {
-      cancelAnimation(translateX);
-      cancelAnimation(translateY);
-      startX.value = translateX.value;
-      startY.value = translateY.value;
-    })
-    .onUpdate((event) => {
-      if (scale.value > MIN_SCALE) {
-        const { maxX, maxY } = getBounds();
-        translateX.value = clamp(startX.value + event.translationX, -maxX, maxX);
-        translateY.value = clamp(startY.value + event.translationY, -maxY, maxY);
-      } else {
-        if (Math.abs(event.translationY) < Math.abs(event.translationX)) {
-          translateX.value = startX.value + event.translationX * 0.3;
-        }
-      }
-    })
-    .onEnd((event) => {
-      if (scale.value > MIN_SCALE) {
-        const { maxX, maxY } = getBounds();
-        translateX.value = withTiming(clamp(translateX.value, -maxX, maxY), ANIMATION_CONFIG);
-        translateY.value = withTiming(clamp(translateY.value, -maxY, maxY), ANIMATION_CONFIG);
-      } else {
-        if (Math.abs(event.translationX) > 100 || Math.abs(event.velocityX) > 500) {
-          if (event.translationX > 0 && currentIndex > 0) {
-            runOnJS(onPrev)();
-          } else if (event.translationX < 0 && currentIndex < images.length - 1) {
-            runOnJS(onNext)();
-          }
-        }
-        translateX.value = withTiming(0, ANIMATION_CONFIG);
-      }
-    });
-
-  const doubleTapGesture = Gesture.Tap()
-    .numberOfTaps(2)
-    .maxDuration(250)
-    .onEnd((event) => {
-      cancelAnimation(scale);
-      cancelAnimation(translateX);
-      cancelAnimation(translateY);
-      
-      if (scale.value > MIN_SCALE) {
-        scale.value = withTiming(MIN_SCALE, ANIMATION_CONFIG);
-        translateX.value = withTiming(0, ANIMATION_CONFIG);
-        translateY.value = withTiming(0, ANIMATION_CONFIG);
-      } else {
-        const tapX = event.x - SCREEN_WIDTH / 2;
-        const tapY = event.y - IMAGE_HEIGHT / 2;
-        
-        scale.value = withTiming(DOUBLE_TAP_SCALE, ANIMATION_CONFIG);
-        translateX.value = withTiming(-tapX * (DOUBLE_TAP_SCALE - 1), ANIMATION_CONFIG);
-        translateY.value = withTiming(-tapY * (DOUBLE_TAP_SCALE - 1), ANIMATION_CONFIG);
-      }
-    });
-
-  const singleTapGesture = Gesture.Tap()
-    .numberOfTaps(1)
-    .maxDuration(250)
-    .onEnd((event) => {
-      if (scale.value <= MIN_SCALE) {
-        const tapX = event.x;
-        const leftZone = SCREEN_WIDTH * 0.3;
-        const rightZone = SCREEN_WIDTH * 0.7;
-        
-        if (tapX < leftZone && currentIndex > 0) {
-          runOnJS(onPrev)();
-        } else if (tapX > rightZone && currentIndex < images.length - 1) {
-          runOnJS(onNext)();
-        } else {
-          runOnJS(toggleUI)();
-        }
-      } else {
-        runOnJS(toggleUI)();
-      }
-    });
-
-  const composedGesture = Gesture.Race(
-    doubleTapGesture,
-    Gesture.Simultaneous(pinchGesture, panGesture),
-    singleTapGesture
-  );
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }));
-
   const handleThumbnailPress = useCallback((idx: number) => {
-    const diff = idx - currentIndex;
-    if (diff > 0) {
-      for (let i = 0; i < diff; i++) {
+    setCurrentImageIndex(idx);
+    if (idx > currentImageIndex) {
+      onNext();
+    } else if (idx < currentImageIndex) {
+      onPrev();
+    }
+  }, [currentImageIndex, onNext, onPrev]);
+
+  const handleToggleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => !prev);
+    if (Platform.OS !== 'web') {
+      StatusBar.setHidden(!isFullscreen, 'fade');
+    }
+  }, [isFullscreen]);
+
+  const handleToggleInfo = useCallback(() => {
+    setShowInfo(prev => !prev);
+  }, []);
+
+  const handleSwipeDown = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const handleClick = useCallback(() => {
+    setUiVisible(prev => !prev);
+  }, []);
+
+  const handleChangeIndex = useCallback((index?: number) => {
+    if (index !== undefined) {
+      setCurrentImageIndex(index);
+      if (index > currentImageIndex) {
         onNext();
-      }
-    } else if (diff < 0) {
-      for (let i = 0; i < Math.abs(diff); i++) {
+      } else if (index < currentImageIndex) {
         onPrev();
       }
     }
-  }, [currentIndex, onNext, onPrev]);
-
-  const resetZoom = useCallback(() => {
-    cancelAnimation(scale);
-    cancelAnimation(translateX);
-    cancelAnimation(translateY);
-    scale.value = withTiming(MIN_SCALE, ANIMATION_CONFIG);
-    translateX.value = withTiming(0, ANIMATION_CONFIG);
-    translateY.value = withTiming(0, ANIMATION_CONFIG);
-  }, []);
+  }, [currentImageIndex, onNext, onPrev]);
 
   if (!visible || !currentImage) return null;
 
-  const isZoomed = scale.value > MIN_SCALE;
+  const fileSize = currentImage.size 
+    ? (currentImage.size / 1024 / 1024).toFixed(2) + ' MB'
+    : 'Unknown';
+
+  const imageUrls = images.map(img => ({
+    url: img.uri,
+    props: {
+      name: img.name,
+      size: img.size,
+      thumb: img.thumb,
+    }
+  }));
+
+  const renderHeader = () => (
+    <View
+      style={[
+        styles.header,
+        {
+          backgroundColor: theme.surface + 'CC',
+          borderBottomColor: theme.border,
+          opacity: uiVisible ? 1 : 0,
+        } as ViewStyle,
+        Platform.OS === 'web' && webStyles.headerWeb,
+      ]}
+    >
+      <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+        <CloseIcon color={theme.text} />
+      </TouchableOpacity>
+      <Text style={[styles.counter, { color: theme.text }]}>
+        {currentImageIndex + 1} / {images.length}
+      </Text>
+      <View style={styles.headerRight}>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleToggleInfo}>
+          <InfoIcon color={theme.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleToggleFullscreen}>
+          <FullscreenIcon color={theme.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.favoriteBtn} onPress={handleToggleFavorite}>
+          <HeartIcon
+            filled={favorites.has(currentImage.name)}
+            color={favorites.has(currentImage.name) ? '#ef4444' : theme.text}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleDownload}>
+          <DownloadIcon color={theme.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
+          <ShareIcon color={theme.text} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderIndicator = (currentIndex?: number, allSize?: number) => {
+    return <View />;
+  };
+
+  const renderInfo = () => (
+    <View
+      style={[
+        styles.infoPanel,
+        {
+          backgroundColor: theme.surface + 'CC',
+          borderColor: theme.border,
+          opacity: showInfo ? 1 : 0,
+        } as ViewStyle,
+        Platform.OS === 'web' && webStyles.infoPanelWeb,
+      ]}
+    >
+      <Text style={[styles.infoText, { color: theme.text }]}>
+        Name: {currentImage.name}
+      </Text>
+      <Text style={[styles.infoText, { color: theme.text }]}>
+        Size: {fileSize}
+      </Text>
+      <TouchableOpacity
+        style={[styles.closeInfoBtn, { backgroundColor: theme.accent }]}
+        onPress={() => setShowInfo(false)}
+      >
+        <Text style={{ color: '#fff' }}>Close</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderThumbnails = () => (
+    <View
+      style={[
+        styles.thumbnailContainer,
+        {
+          backgroundColor: theme.surface + 'CC',
+          borderTopColor: theme.border,
+          opacity: uiVisible ? 1 : 0,
+        } as ViewStyle,
+        Platform.OS === 'web' && webStyles.thumbnailContainerWeb,
+      ]}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.thumbnailScroll}
+      >
+        {images.slice(Math.max(0, currentImageIndex - 10), currentImageIndex + 10).map((img, idx) => {
+          const actualIndex = Math.max(0, currentImageIndex - 10) + idx;
+          return (
+            <TouchableOpacity
+              key={`${img.name}-${actualIndex}`}
+              style={[
+                styles.thumbnail,
+                actualIndex === currentImageIndex && styles.thumbnailActive,
+                { borderColor: actualIndex === currentImageIndex ? theme.accent : 'transparent' },
+              ]}
+              onPress={() => handleThumbnailPress(actualIndex)}
+            >
+              <Image
+                source={{ uri: img.thumb || img.uri }}
+                style={styles.thumbnailImage as any}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
 
   return (
     <Modal
@@ -303,129 +279,27 @@ export const ModalViewer = memo<ModalViewerProps>(({
       statusBarTranslucent
     >
       <View style={[styles.backdrop, { backgroundColor: theme.background }]}>
-        <SafeAreaView style={styles.container}>
-          {uiVisible && (
-            <View
-              style={[
-                styles.header,
-                {
-                  backgroundColor: theme.surface,
-                  borderBottomColor: theme.border,
-                },
-              ]}
-            >
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-                <CloseIcon color={theme.text} />
-              </TouchableOpacity>
-              <Text style={[styles.counter, { color: theme.text }]}>
-                {currentIndex + 1} / {images.length}
-              </Text>
-              <View style={styles.headerRight}>
-                <TouchableOpacity style={styles.favoriteBtn} onPress={handleToggleFavorite}>
-                  <HeartIcon
-                    filled={favorites.has(currentImage.name)}
-                    color={favorites.has(currentImage.name) ? '#ef4444' : theme.text}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={handleDownload}>
-                  <DownloadIcon color={theme.text} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
-                  <ShareIcon color={theme.text} />
-                </TouchableOpacity>
-                {isZoomed && (
-                  <TouchableOpacity style={styles.actionBtn} onPress={resetZoom}>
-                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600' }}>1:1</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
+        <ImageViewer
+          imageUrls={imageUrls}
+          index={currentImageIndex}
+          onChange={handleChangeIndex}
+          onClick={handleClick}
+          onSwipeDown={handleSwipeDown}
+          enableSwipeDown={true}
+          swipeDownThreshold={100}
+          loadingRender={() => (
+            <ActivityIndicator size="large" color={theme.accent} />
           )}
-
-          <View style={styles.imageContainer}>
-            {loading && (
-              <ActivityIndicator 
-                size="large" 
-                color={theme.accent} 
-                style={styles.loader}
-              />
-            )}
-            <GestureDetector gesture={composedGesture}>
-              <Animated.View style={[styles.imageWrapper, animatedStyle]}>
-                <Image
-                  source={{ uri: currentImage.uri }}
-                  style={styles.image}
-                  contentFit="contain"
-                  onLoadStart={() => setLoading(true)}
-                  onLoad={() => setLoading(false)}
-                  transition={200}
-                  cachePolicy="memory-disk"
-                />
-              </Animated.View>
-            </GestureDetector>
-          </View>
-
-          {uiVisible && !isZoomed && (
-            <>
-              {currentIndex > 0 && (
-                <TouchableOpacity
-                  style={[styles.navBtn, styles.navPrev, { backgroundColor: theme.surface }]}
-                  onPress={onPrev}
-                >
-                  <ChevronLeftIcon color={theme.text} />
-                </TouchableOpacity>
-              )}
-              {currentIndex < images.length - 1 && (
-                <TouchableOpacity
-                  style={[styles.navBtn, styles.navNext, { backgroundColor: theme.surface }]}
-                  onPress={onNext}
-                >
-                  <ChevronRightIcon color={theme.text} />
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-
-          {uiVisible && !isZoomed && (
-            <View
-              style={[
-                styles.thumbnailContainer,
-                {
-                  backgroundColor: theme.surface,
-                  borderTopColor: theme.border,
-                },
-              ]}
-            >
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.thumbnailScroll}
-              >
-                {images.slice(Math.max(0, currentIndex - 10), currentIndex + 10).map((img, idx) => {
-                  const actualIndex = Math.max(0, currentIndex - 10) + idx;
-                  return (
-                    <TouchableOpacity
-                      key={`${img.name}-${actualIndex}`}
-                      style={[
-                        styles.thumbnail,
-                        actualIndex === currentIndex && styles.thumbnailActive,
-                        { borderColor: actualIndex === currentIndex ? theme.accent : 'transparent' },
-                      ]}
-                      onPress={() => handleThumbnailPress(actualIndex)}
-                    >
-                      <Image
-                        source={{ uri: img.thumb || img.uri }}
-                        style={styles.thumbnailImage}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
-        </SafeAreaView>
+          renderHeader={renderHeader}
+          renderIndicator={renderIndicator}
+          backgroundColor={theme.background}
+          saveToLocalByLongPress={false}
+          enablePreload={true}
+          enableImageZoom={true}
+          useNativeDriver={true}
+        />
+        {renderInfo()}
+        {renderThumbnails()}
       </View>
     </Modal>
   );
@@ -436,10 +310,7 @@ ModalViewer.displayName = 'ModalViewer';
 const styles = StyleSheet.create({
   backdrop: { 
     flex: 1,
-  },
-  container: { 
-    flex: 1,
-  },
+  } as ViewStyle,
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -448,74 +319,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     zIndex: 10,
-  },
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  } as ViewStyle,
   closeBtn: { 
     padding: 8,
-  },
+  } as ViewStyle,
   counter: { 
     fontSize: 16, 
     fontWeight: '600',
-  },
+  } as TextStyle,
   headerRight: { 
     flexDirection: 'row', 
     alignItems: 'center',
-  },
+  } as ViewStyle,
   favoriteBtn: { 
     padding: 8, 
     marginRight: 8,
-  },
+  } as ViewStyle,
   actionBtn: { 
     padding: 8, 
     marginLeft: 8,
-  },
-  imageContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imageWrapper: {
-    width: SCREEN_WIDTH,
-    height: IMAGE_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  loader: {
-    position: 'absolute',
-    zIndex: 1,
-  },
-  navBtn: {
-    position: 'absolute',
-    top: '50%',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: -24,
-    zIndex: 5,
-    ...Platform.select({
-      web: { 
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-      },
-      default: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      },
-    }),
-  },
-  navPrev: { 
-    left: 16,
-  },
-  navNext: { 
-    right: 16,
-  },
+  } as ViewStyle,
   thumbnailContainer: {
     position: 'absolute',
     bottom: 0,
@@ -524,10 +351,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     zIndex: 10,
-  },
+  } as ViewStyle,
   thumbnailScroll: { 
     paddingHorizontal: 16,
-  },
+  } as ViewStyle,
   thumbnail: {
     width: 60,
     height: 60,
@@ -535,12 +362,44 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderWidth: 2,
     overflow: 'hidden',
-  },
+  } as ViewStyle,
   thumbnailActive: { 
     borderWidth: 2,
-  },
+  } as ViewStyle,
   thumbnailImage: { 
     width: '100%', 
     height: '100%',
-  },
+  } as ImageStyle,
+  infoPanel: {
+    position: 'absolute',
+    top: 80,
+    left: 16,
+    right: 16,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    zIndex: 20,
+  } as ViewStyle,
+  infoText: {
+    fontSize: 14,
+    marginBottom: 8,
+  } as TextStyle,
+  closeInfoBtn: {
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  } as ViewStyle,
+});
+
+const webStyles = StyleSheet.create({
+  headerWeb: {
+    backdropFilter: 'blur(10px)',
+  } as ViewStyle,
+  thumbnailContainerWeb: {
+    backdropFilter: 'blur(10px)',
+  } as ViewStyle,
+  infoPanelWeb: {
+    backdropFilter: 'blur(10px)',
+  } as ViewStyle,
 });
